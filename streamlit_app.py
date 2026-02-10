@@ -13,8 +13,8 @@ def init_db():
     c = conn.cursor()
     # Assets Table
     c.execute('''CREATE TABLE IF NOT EXISTS assets 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, serial TEXT, 
-                  category TEXT, purchase_date TEXT, location TEXT, status TEXT)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, serial TEXT, 
+              category TEXT, purchase_date TEXT, location TEXT, status TEXT, quantity INTEGER)''')
     # Categories Table
     c.execute('CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)')
     # Default Categories
@@ -68,6 +68,7 @@ elif choice == "Manage Assets":
         with st.form("add_form", clear_on_submit=True):
             name = st.text_input("Asset Name")
             serial = st.text_input("Serial Number")
+            qty = st.number_input("Quantity", min_value=1, step=1)
             cat_list = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
             category = st.selectbox("Category", cat_list)
             p_date = st.date_input("Purchase Date")
@@ -75,8 +76,8 @@ elif choice == "Manage Assets":
             submit = st.form_submit_button("Save Asset")
             
             if submit:
-                conn.execute('INSERT INTO assets (name, serial, category, purchase_date, location, status) VALUES (?,?,?,?,?,?)',
-                             (name, serial, category, str(p_date), loc, "In Stock"))
+                conn.execute('INSERT INTO assets (name, serial, category, purchase_date, location, status, quantity) VALUES (?,?,?,?,?,?,?)',
+                             (name, serial, category, str(p_date), loc, "In Stock", qty))
                 conn.commit()
                 st.success(f"Asset '{name}' added successfully!")
 
@@ -125,8 +126,8 @@ elif choice == "Reports":
         report_df = pd.read_sql('SELECT * FROM assets WHERE location=?', conn, params=(target_loc,))
     else:
         # Low Stock Simulation: Shows categories with less than 5 items
-        report_df = pd.read_sql('SELECT category, COUNT(*) as Quantity FROM assets GROUP BY category HAVING Quantity < 5', conn)
-        st.warning("The following categories have low inventory (< 5 items):")
+        report_df = pd.read_sql('SELECT name, category, quantity FROM assets WHERE quantity <= 5', conn)
+        st.warning("Low Inventory Alert: The following items have 5 or fewer units remaining.")
         
     st.table(report_df)
     
