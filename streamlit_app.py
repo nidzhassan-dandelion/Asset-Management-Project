@@ -4,7 +4,8 @@ import sqlite3
 
 # --- 1. DATABASE CONFIGURATION ---
 def get_connection():
-    return sqlite3.connect('inventory_v4.db', check_same_thread=False)
+    # v5 to ensure all new logic is fresh
+    return sqlite3.connect('inventory_v5.db', check_same_thread=False)
 
 def init_db():
     conn = get_connection()
@@ -13,16 +14,16 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, serial TEXT, 
                   category TEXT, purchase_date TEXT, location TEXT, status TEXT, quantity INTEGER)''')
     c.execute('CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)')
+    # Adding default categories
     default_cats = [("IT Equipment",), ("Office Furniture",), ("Tools",)]
     c.executemany('INSERT OR IGNORE INTO categories VALUES (?)', default_cats)
     conn.commit()
 
 init_db()
 
-# --- 2. AUTHENTICATION ---
+# --- 2. AUTHENTICATION SIDEBAR ---
 st.sidebar.title("🔐 Access Control")
 user_role = st.sidebar.selectbox("Current Role", ["Viewer", "Manager", "Admin"])
-st.sidebar.info(f"Permissions: {user_role} Level")
 
 # --- 3. MAIN INTERFACE ---
 st.title("🛡️ Asset & Inventory System")
@@ -36,67 +37,111 @@ if choice == "Dashboard":
     df = pd.read_sql('SELECT * FROM assets', conn)
     
     if not df.empty:
-        # --- SMART LOGIC: Auto-update Status based on Quantity ---
-        # If quantity is 0, force status to 'Out of Stock'
+        # AUTOMATIC LOGIC: If quantity is 0, status is Out of Stock
         df.loc[df['quantity'] == 0, 'status'] = 'Out of Stock'
+        df.loc[df['quantity'] > 0, 'status'] = 'In Stock'
         
-        search = st.text_input("Search by Name or Serial")
+        search = st.text_input("Search by Name, Serial, or Category")
         if search:
-            df = df[df['name'].str.contains(search, case=False) | df['serial'].str.contains(search, case=False)]
-        
+            df = df[df['name'].str.contains(search, case=False) | 
+                    df['serial'].str.contains(search, case=False) |
+                    df['category'].str.contains(search, case=False)]
         st.dataframe(df, use_container_width=True)
     else:
-        st.info("No assets found.")
+        st.info("Inventory is empty.")
 
-# --- FEATURE: MANAGE ASSETS ---
+# --- FEATURE: MANAGE ASSETS (CRUD) ---
 elif choice == "Manage Assets":
     if user_role == "Admin":
-        st.subheader("➕ Add Asset")
+        st.subheader("➕ Add New Asset")
         with st.form("add_form", clear_on_submit=True):
-            name = st.text_input("Name")
-            serial = st.text_input("Serial Number")
-            qty = st.number_input("Quantity", min_value=0, step=1, value=1)
-            cat_list = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
-            category = st.selectbox("Category", cat_list)
-            loc = st.selectbox("Location", ["Office A", "Warehouse 1", "Remote"])
-            submit = st.form_submit_button("Save")
+            col1, col2 = st.columns(2)
+            with col1:
+                name = st.text_input("Asset Name")
+                serial = st.text_input("Serial Number")
+                cat_list = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
+                category = st.selectbox("Category", cat_list)
+            with col2:
+                qty = st.number_input("Quantity", min_value=0, step=1, value=1)
+                loc = st.selectbox("Location", ["Office A", "Warehouse 1", "Remote Employee"])
+                p_date = st.date_input("Purchase Date")
             
-            if submit:
-                # Initial status: if qty is 0, it's Out of Stock, otherwise In Stock
-                initial_status = "In Stock" if qty > 0 else "Out of Stock"
-                conn.execute('INSERT INTO assets (name, serial, category, location, status, quantity) VALUES (?,?,?,?,?,?)',
-                             (name, serial, category, loc, initial_status, qty))
+            if st.form_submit_button("Save Asset"):
+                # Status Logic
+                status = "In Stock" if qty > 0 else "Out of Stock"
+                conn.execute('INSERT INTO assets (name, serial, category, purchase_date, location, status, quantity) VALUES (?,?,?,?,?,?,?)',
+                             (name, serial, category, str(p_date), loc, status, qty))
                 conn.commit()
                 st.success("Asset Added!")
 
     if user_role in ["Admin", "Manager"]:
         st.divider()
-        st.subheader("🔄 Update Asset")
+        st.subheader("🔄 Update Status/Location")
         assets = [row[0] for row in conn.execute('SELECT name FROM assets').fetchall()]
         if assets:
-            target = st.selectbox("Select Asset", assets)
+            target = st.selectbox("Select Asset to Update", assets)
             new_qty = st.number_input("Update Quantity", min_value=0, step=1)
-            new_loc = st.selectbox("New Location", ["Office A", "Warehouse 1", "Remote"])
+            new_loc = st.selectbox("New Location", ["Office A", "Warehouse 1", "Remote Employee"])
             
-            if st.button("Apply Updates"):
-                # Automatically determine status based on the new quantity
-                updated_status = "In Stock" if new_qty > 0 else "Out of Stock"
+            if st.button("Update Asset"):
+                status = "In Stock" if new_qty > 0 else "Out of Stock"
                 conn.execute('UPDATE assets SET quantity=?, location=?, status=? WHERE name=?', 
-                             (new_qty, new_loc, updated_status, target))
+                             (new_qty, new_loc, status, target))
                 conn.commit()
-                st.info(f"Updated! Status is now {updated_status}")
+                st.rerun()
 
-# --- FEATURE: CATEGORY & REPORTS ---
-# (Same as before, simplified for space)
-elif choice == "Category Settings" and user_role == "Admin":
-    new_cat = st.text_input("New Category")
-    if st.button("Add"):
-        conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (new_cat,))
-        conn.commit()
-        st.rerun()
+    if user_role == "Admin":
+        st.divider()
+        st.subheader("🗑️ Delete Asset")
+        assets_del = [row[0] for row in conn.execute('SELECT name FROM assets').fetchall()]
+        if assets_del:
+            target_del = st.selectbox("Remove Asset", assets_del)
+            if st.button("Confirm Delete"):
+                conn.execute('DELETE FROM assets WHERE name=?', (target_del,))
+                conn.commit()
+                st.rerun()
 
+# --- FEATURE: CATEGORY MANAGEMENT ---
+elif choice == "Category Settings":
+    if user_role == "Admin":
+        st.subheader("📂 Manage Categories")
+        new_cat = st.text_input("New Category Name")
+        if st.button("Add"):
+            conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (new_cat,))
+            conn.commit()
+            st.rerun()
+    else:
+        st.error("Admin Only")
+
+# --- FEATURE: REPORTS (THE 2 MAJOR POINTS) ---
 elif choice == "Reports":
+    st.header("📋 Exportable Reports")
+    report_type = st.radio("Select Report Type", ["Assets by Location", "Low Stock Alert"])
+    
     df_all = pd.read_sql('SELECT * FROM assets', conn)
-    # Ensure status is accurate in reports too
+    # Applying the auto-status logic to the report data
     df_all.loc[df_all['quantity'] == 0, 'status'] = 'Out of Stock'
-    st.table(df_all[df_all['quantity'] <= 5]) # Low Stock Report
+    df_all.loc[df_all['quantity'] > 0, 'status'] = 'In Stock'
+
+    if report_type == "Assets by Location":
+        loc_choice = st.selectbox("Select Location", ["Office A", "Warehouse 1", "Remote Employee"])
+        final_report = df_all[df_all['location'] == loc_choice]
+        st.subheader(f"Assets currently in: {loc_choice}")
+    
+    else: # Low Stock Alert
+        threshold = 5
+        final_report = df_all[df_all['quantity'] < threshold]
+        st.subheader(f"Items with Quantity Less Than {threshold}")
+        st.warning("Attention: These items require restocking.")
+
+    st.dataframe(final_report, use_container_width=True)
+    
+    # EXPORT BUTTON
+    if not final_report.empty:
+        csv = final_report.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Report as CSV",
+            data=csv,
+            file_name=f"{report_type.replace(' ', '_')}.csv",
+            mime="text/csv",
+        )
