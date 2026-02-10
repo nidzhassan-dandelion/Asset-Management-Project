@@ -136,7 +136,7 @@ elif choice == "Category Settings":
 # --- FEATURE: REPORTS (PRINTABLE/EXPORTABLE) ---
 elif choice == "Reports":
     st.header("📊 Exportable Reports")
-    report_type = st.radio("Choose Report", ["Assets by Location", "Low Stock Alert (< 5 units)"])
+    report_type = st.radio("Choose Report", ["Assets by Location", "Low Stock Alert (<= 5 units)"])
     
     df_rep = pd.read_sql('SELECT * FROM assets', conn)
     if not df_rep.empty:
@@ -149,7 +149,7 @@ elif choice == "Reports":
             final_df = df_rep[df_rep['location'] == loc_choice]
             st.subheader(f"Assets in {loc_choice}")
         else:
-            final_df = df_rep[df_rep['quantity'] < 5]
+            final_df = df_rep[df_rep['quantity'] <= 5]
             st.subheader("Low Stock Inventory")
 
         st.dataframe(final_df, use_container_width=True)
