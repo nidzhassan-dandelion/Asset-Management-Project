@@ -5,7 +5,6 @@ import hashlib
 
 # --- 1. DATABASE & SECURITY CONFIG ---
 def get_connection():
-    # v14: Includes export buttons and authorization warning labels
     return sqlite3.connect('inventory_final_v14.db', check_same_thread=False)
 
 def make_hashes(password):
@@ -210,6 +209,8 @@ if st.session_state['logged_in']:
         st.header("📊 Reports")
         rep = st.radio("Type", ["Location Report", "Low Stock Alert (<= 5)"])
         df_r = pd.read_sql('SELECT * FROM assets', conn)
+        
+        # We process the current status logic first
         if not df_r.empty:
             df_r.loc[df_r['quantity'] == 0, 'status'] = 'Out of Stock'
             df_r.loc[df_r['quantity'] > 0, 'status'] = 'In Stock'
@@ -220,13 +221,16 @@ if st.session_state['logged_in']:
                     ls = st.selectbox("Select Location", lo)
                     res = df_r[df_r['location'] == ls]
                     st.dataframe(res)
-                    # EXPORT BUTTON ADDED HERE
-                    st.download_button("📥 Export Location Report (CSV)", res.to_csv(index=False).encode('utf-8'), "location_report.csv", "text/csv")
+                    # BUTTON IS HERE
+                    st.download_button(label="📥 Export Location Report (CSV)", data=res.to_csv(index=False).encode('utf-8'), file_name="location_report.csv", mime="text/csv")
+                else: st.warning("No locations found.")
             else:
                 res = df_r[df_r['quantity'] <= 5]
                 st.dataframe(res)
-                # EXPORT BUTTON ADDED HERE
-                st.download_button("📥 Export Low Stock Report (CSV)", res.to_csv(index=False).encode('utf-8'), "low_stock_report.csv", "text/csv")
+                # BUTTON IS HERE
+                st.download_button(label="📥 Export Low Stock Report (CSV)", data=res.to_csv(index=False).encode('utf-8'), file_name="low_stock_report.csv", mime="text/csv")
+        else:
+            st.info("No assets in the system yet. Please add assets to view reports.")
 
 else:
     st.title("🔒 Restricted Access")
