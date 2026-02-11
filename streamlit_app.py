@@ -140,7 +140,7 @@ if st.session_state['logged_in']:
                 if st.button("Confirm Delete Asset"):
                     conn.execute('DELETE FROM assets WHERE name=?', (t_del,)); conn.commit(); st.rerun()
 
-    # --- CATEGORY SETTINGS (FIXED) ---
+    # --- CATEGORY SETTINGS ---
     elif choice == "Category Settings":
         if user_role == "Admin":
             st.subheader("📂 Manage Categories")
@@ -148,14 +148,22 @@ if st.session_state['logged_in']:
             with st.expander("➕ Add"):
                 n_cat = st.text_input("New Name")
                 if st.button("Save Cat"): 
-                    if n_cat: conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (n_cat,)); conn.commit(); st.rerun()
+                    if n_cat: 
+                        conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (n_cat,))
+                        conn.commit()
+                        st.success(f"Category '{n_cat}' Added Successfully!")
+                        st.rerun()
             with st.expander("📝 Edit"):
                 c_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
                 if c_list:
                     old_c = st.selectbox("Select Category", c_list, key="edit_cat_select")
                     ren_c = st.text_input("New Name for Category")
                     if st.button("Update Cat Name"):
-                        if ren_c: conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c)); conn.commit(); st.rerun()
+                        if ren_c: 
+                            conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c))
+                            conn.commit()
+                            st.success(f"Category Renamed from '{old_c}' to '{ren_c}'!")
+                            st.rerun()
             with st.expander("🗑️ Delete"):
                 d_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
                 if d_list:
@@ -163,11 +171,14 @@ if st.session_state['logged_in']:
                     if st.button("Delete Cat Now"):
                         check = conn.execute('SELECT count(*) FROM assets WHERE category=?', (d_cat,)).fetchone()[0]
                         if check == 0:
-                            conn.execute('DELETE FROM categories WHERE name=?', (d_cat,)); conn.commit(); st.rerun()
+                            conn.execute('DELETE FROM categories WHERE name=?', (d_cat,))
+                            conn.commit()
+                            st.success(f"Category '{d_cat}' Deleted Successfully!")
+                            st.rerun()
                         else: st.error(f"Cannot delete! '{d_cat}' is currently used.")
         else: st.error("Only Admin is authorized.")
 
-    # --- LOCATION SETTINGS (FIXED) ---
+    # --- LOCATION SETTINGS ---
     elif choice == "Initial Location Settings":
         if user_role == "Admin":
             st.subheader("📍 Manage Locations")
@@ -175,14 +186,22 @@ if st.session_state['logged_in']:
             with st.expander("➕ Add"):
                 n_loc = st.text_input("New Location Name")
                 if st.button("Save Loc"): 
-                    if n_loc: conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,)); conn.commit(); st.rerun()
+                    if n_loc: 
+                        conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,))
+                        conn.commit()
+                        st.success(f"Location '{n_loc}' Added Successfully!")
+                        st.rerun()
             with st.expander("📝 Edit"):
                 l_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
                 if l_list:
                     old_l = st.selectbox("Select Location", l_list, key="edit_loc_select")
                     ren_l = st.text_input("New Location Name String")
                     if st.button("Update Loc Name"):
-                        if ren_l: conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
+                        if ren_l: 
+                            conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l))
+                            conn.commit()
+                            st.success(f"Location Renamed from '{old_l}' to '{ren_l}'!")
+                            st.rerun()
             with st.expander("🗑️ Delete"):
                 dl_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
                 if dl_list:
@@ -190,7 +209,10 @@ if st.session_state['logged_in']:
                     if st.button("Delete Loc Now"):
                         check = conn.execute('SELECT count(*) FROM assets WHERE location=?', (d_loc,)).fetchone()[0]
                         if check == 0:
-                            conn.execute('DELETE FROM locations WHERE name=?', (d_loc,)); conn.commit(); st.rerun()
+                            conn.execute('DELETE FROM locations WHERE name=?', (d_loc,))
+                            conn.commit()
+                            st.success(f"Location '{d_loc}' Deleted Successfully!")
+                            st.rerun()
                         else: st.error(f"Cannot delete! '{d_loc}' is currently used.")
         else: st.error("Only Admin is authorized.")
 
@@ -216,7 +238,6 @@ if st.session_state['logged_in']:
         if not df_r.empty:
             df_r.loc[df_r['quantity'] == 0, 'status'] = 'Out of Stock'
             df_r.loc[df_r['quantity'] > 0, 'status'] = 'In Stock'
-            
             if rep == "Location Report":
                 lo = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
                 if lo:
