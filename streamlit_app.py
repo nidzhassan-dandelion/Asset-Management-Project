@@ -5,8 +5,8 @@ import hashlib
 
 # --- 1. DATABASE & SECURITY CONFIG ---
 def get_connection():
-    # v12: Integrated secure login with updated Low Stock threshold (<=5)
-    return sqlite3.connect('inventory_final_v12.db', check_same_thread=False)
+    # v13: Final stable version with Delete Function Bug Fixes
+    return sqlite3.connect('inventory_final_v13.db', check_same_thread=False)
 
 def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
@@ -26,7 +26,6 @@ def init_db():
     c.execute('CREATE TABLE IF NOT EXISTS locations (name TEXT PRIMARY KEY)')
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT)')
     
-    # Create default Admin account
     admin_hash = make_hashes('password123')
     c.execute('INSERT OR IGNORE INTO users (username, password, role) VALUES (?,?,?)', ('admin', admin_hash, 'Admin'))
     conn.commit()
@@ -64,7 +63,7 @@ else:
         st.session_state['role'] = None
         st.rerun()
 
-# --- 4. MAIN APP CONTENT (ONLY IF LOGGED IN) ---
+# --- 4. MAIN APP CONTENT ---
 if st.session_state['logged_in']:
     user_role = st.session_state['role']
     st.title("🛡️ Asset & Inventory System")
@@ -83,7 +82,7 @@ if st.session_state['logged_in']:
         if not df.empty:
             df.loc[df['quantity'] == 0, 'status'] = 'Out of Stock'
             df.loc[df['quantity'] > 0, 'status'] = 'In Stock'
-            search = st.text_input("Search by Name, Serial, or Category")
+            search = st.text_input("Search...")
             if search:
                 df = df[df['name'].str.contains(search, case=False) | df['serial'].str.contains(search, case=False) | df['category'].str.contains(search, case=False)]
             st.dataframe(df, use_container_width=True)
@@ -131,15 +130,7 @@ if st.session_state['logged_in']:
                     conn.execute('UPDATE assets SET quantity=?, location=?, status=? WHERE name=?', (new_qty, new_loc, new_status, target))
                     conn.commit(); st.success("Updated!"); st.rerun()
 
-        if user_role == "Admin":
-            st.divider(); st.subheader("🗑️ Delete Asset")
-            assets = [r[0] for r in conn.execute('SELECT name FROM assets').fetchall()]
-            if assets:
-                t_del = st.selectbox("Delete Asset", assets)
-                if st.button("Confirm Delete Asset"):
-                    conn.execute('DELETE FROM assets WHERE name=?', (t_del,)); conn.commit(); st.rerun()
-
-    # --- CATEGORY SETTINGS ---
+    # --- CATEGORY SETTINGS (FIXED DELETE) ---
     elif choice == "Category Settings" and user_role == "Admin":
         st.subheader("📂 Manage Categories")
         with st.expander("➕ Add"):
@@ -147,14 +138,22 @@ if st.session_state['logged_in']:
             if st.button("Save Cat"): conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (n_cat,)); conn.commit(); st.rerun()
         with st.expander("📝 Edit"):
             c_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
-            old_c = st.selectbox("Select Category", c_list)
-            ren_c = st.text_input("New Name")
-            if st.button("Update Cat"): conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c)); conn.commit(); st.rerun()
+            if c_list:
+                old_c = st.selectbox("Select Category", c_list)
+                ren_c = st.text_input("New Name")
+                if st.button("Update Cat"): conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c)); conn.commit(); st.rerun()
         with st.expander("🗑️ Delete"):
-            d_cat = st.selectbox("Remove Category", [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()])
-            if st.button("Delete Cat"): conn.execute('DELETE FROM categories WHERE name=?', (d_cat,)); conn.commit(); st.rerun()
+            d_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
+            if d_list:
+                d_cat = st.selectbox("Remove Category", d_list)
+                if st.button("Delete Cat"):
+                    # Check if Category is used by assets
+                    check = conn.execute('SELECT count(*) FROM assets WHERE category=?', (d_cat,)).fetchone()[0]
+                    if check == 0:
+                        conn.execute('DELETE FROM categories WHERE name=?', (d_cat,)); conn.commit(); st.rerun()
+                    else: st.error(f"Cannot delete! '{d_cat}' is currently used by assets in your inventory.")
 
-    # --- LOCATION SETTINGS ---
+    # --- LOCATION SETTINGS (FIXED DELETE) ---
     elif choice == "Initial Location Settings" and user_role == "Admin":
         st.subheader("📍 Manage Locations")
         with st.expander("➕ Add"):
@@ -162,28 +161,34 @@ if st.session_state['logged_in']:
             if st.button("Save Loc"): conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,)); conn.commit(); st.rerun()
         with st.expander("📝 Edit"):
             l_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
-            old_l = st.selectbox("Select Location", l_list)
-            ren_l = st.text_input("New Location Name")
-            if st.button("Update Loc"): conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
+            if l_list:
+                old_l = st.selectbox("Select Location", l_list)
+                ren_l = st.text_input("New Location Name")
+                if st.button("Update Loc"): conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
         with st.expander("🗑️ Delete"):
-            d_loc = st.selectbox("Remove Location", [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()])
-            if st.button("Delete Loc"): conn.execute('DELETE FROM locations WHERE name=?', (d_loc,)); conn.commit(); st.rerun()
+            dl_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
+            if dl_list:
+                d_loc = st.selectbox("Remove Location", dl_list)
+                if st.button("Delete Loc"):
+                    # Check if Location is used by assets
+                    check = conn.execute('SELECT count(*) FROM assets WHERE location=?', (d_loc,)).fetchone()[0]
+                    if check == 0:
+                        conn.execute('DELETE FROM locations WHERE name=?', (d_loc,)); conn.commit(); st.rerun()
+                    else: st.error(f"Cannot delete! '{d_loc}' is currently used by assets in your inventory.")
 
-    # --- USER MANAGEMENT ---
+    # --- USER MANAGEMENT & REPORTS ---
     elif choice == "User Management" and user_role == "Admin":
         st.subheader("👥 User Administration")
         with st.form("user_form"):
-            new_u = st.text_input("Username")
-            new_p = st.text_input("Password", type='password')
+            new_u, new_p = st.text_input("Username"), st.text_input("Password", type='password')
             new_r = st.selectbox("Role", ["Admin", "Manager", "Viewer"])
             if st.form_submit_button("Create User"):
                 try:
                     conn.execute('INSERT INTO users VALUES (?,?,?)', (new_u, make_hashes(new_p), new_r))
                     conn.commit(); st.success(f"User {new_u} created!")
                 except: st.error("User already exists")
-        st.divider(); st.table(pd.read_sql('SELECT username, role FROM users', conn))
+        st.table(pd.read_sql('SELECT username, role FROM users', conn))
 
-    # --- REPORTS ---
     elif choice == "Reports":
         st.header("📊 Reports")
         rep = st.radio("Type", ["Location Report", "Low Stock Alert (<= 5)"])
@@ -192,14 +197,17 @@ if st.session_state['logged_in']:
             df_r.loc[df_r['quantity'] == 0, 'status'] = 'Out of Stock'
             df_r.loc[df_r['quantity'] > 0, 'status'] = 'In Stock'
             if rep == "Location Report":
-                l_opts = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
-                l_sel = st.selectbox("Select Location", l_opts)
-                res = df_r[df_r['location'] == l_sel]
-            else: 
-                # THRESHOLD UPDATED TO <= 5
+                lo = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
+                if lo:
+                    ls = st.selectbox("Select Location", lo)
+                    res = df_r[df_r['location'] == ls]
+                    st.dataframe(res)
+                    st.download_button("Download CSV", res.to_csv(index=False).encode('utf-8'), "report.csv")
+            else:
                 res = df_r[df_r['quantity'] <= 5]
-            st.dataframe(res)
-            st.download_button("Download CSV", res.to_csv(index=False).encode('utf-8'), "report.csv")
+                st.dataframe(res)
+                st.download_button("Download CSV", res.to_csv(index=False).encode('utf-8'), "report.csv")
+
 else:
     st.title("🔒 Restricted Access")
-    st.info("Please enter your credentials in the sidebar to begin.")
+    st.info("Please log in from the sidebar.")
