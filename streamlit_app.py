@@ -140,50 +140,54 @@ if st.session_state['logged_in']:
                 if st.button("Confirm Delete Asset"):
                     conn.execute('DELETE FROM assets WHERE name=?', (t_del,)); conn.commit(); st.rerun()
 
-    # --- CATEGORY SETTINGS ---
+    # --- CATEGORY SETTINGS (FIXED) ---
     elif choice == "Category Settings":
         if user_role == "Admin":
             st.subheader("📂 Manage Categories")
             st.caption("⚠️ Only Admin is authorized to manage categories.")
             with st.expander("➕ Add"):
                 n_cat = st.text_input("New Name")
-                if st.button("Save Cat"): conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (n_cat,)); conn.commit(); st.rerun()
+                if st.button("Save Cat"): 
+                    if n_cat: conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (n_cat,)); conn.commit(); st.rerun()
             with st.expander("📝 Edit"):
                 c_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
                 if c_list:
-                    old_c = st.selectbox("Select Category", c_list)
-                    ren_c = st.text_input("New Name")
-                    if st.button("Update Cat"): conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c)); conn.commit(); st.rerun()
+                    old_c = st.selectbox("Select Category", c_list, key="edit_cat_select")
+                    ren_c = st.text_input("New Name for Category")
+                    if st.button("Update Cat Name"):
+                        if ren_c: conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c)); conn.commit(); st.rerun()
             with st.expander("🗑️ Delete"):
                 d_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
                 if d_list:
-                    d_cat = st.selectbox("Remove Category", d_list)
-                    if st.button("Delete Cat"):
+                    d_cat = st.selectbox("Remove Category", d_list, key="del_cat_select")
+                    if st.button("Delete Cat Now"):
                         check = conn.execute('SELECT count(*) FROM assets WHERE category=?', (d_cat,)).fetchone()[0]
                         if check == 0:
                             conn.execute('DELETE FROM categories WHERE name=?', (d_cat,)); conn.commit(); st.rerun()
                         else: st.error(f"Cannot delete! '{d_cat}' is currently used.")
         else: st.error("Only Admin is authorized.")
 
-    # --- LOCATION SETTINGS ---
+    # --- LOCATION SETTINGS (FIXED) ---
     elif choice == "Initial Location Settings":
         if user_role == "Admin":
             st.subheader("📍 Manage Locations")
             st.caption("⚠️ Only Admin is authorized to manage locations.")
             with st.expander("➕ Add"):
                 n_loc = st.text_input("New Location Name")
-                if st.button("Save Loc"): conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,)); conn.commit(); st.rerun()
+                if st.button("Save Loc"): 
+                    if n_loc: conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,)); conn.commit(); st.rerun()
             with st.expander("📝 Edit"):
                 l_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
                 if l_list:
-                    old_l = st.selectbox("Select Location", l_list)
-                    ren_l = st.text_input("New Location Name")
-                    if st.button("Update Loc"): conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
+                    old_l = st.selectbox("Select Location", l_list, key="edit_loc_select")
+                    ren_l = st.text_input("New Location Name String")
+                    if st.button("Update Loc Name"):
+                        if ren_l: conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
             with st.expander("🗑️ Delete"):
                 dl_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
                 if dl_list:
-                    d_loc = st.selectbox("Remove Location", dl_list)
-                    if st.button("Delete Loc"):
+                    d_loc = st.selectbox("Remove Location", dl_list, key="del_loc_select")
+                    if st.button("Delete Loc Now"):
                         check = conn.execute('SELECT count(*) FROM assets WHERE location=?', (d_loc,)).fetchone()[0]
                         if check == 0:
                             conn.execute('DELETE FROM locations WHERE name=?', (d_loc,)); conn.commit(); st.rerun()
@@ -209,8 +213,6 @@ if st.session_state['logged_in']:
         st.header("📊 Reports")
         rep = st.radio("Type", ["Location Report", "Low Stock Alert (<= 5)"])
         df_r = pd.read_sql('SELECT * FROM assets', conn)
-        
-        # We process the current status logic first
         if not df_r.empty:
             df_r.loc[df_r['quantity'] == 0, 'status'] = 'Out of Stock'
             df_r.loc[df_r['quantity'] > 0, 'status'] = 'In Stock'
@@ -221,17 +223,11 @@ if st.session_state['logged_in']:
                     ls = st.selectbox("Select Location", lo)
                     res = df_r[df_r['location'] == ls]
                     st.dataframe(res)
-                    # BUTTON IS HERE
                     st.download_button(label="📥 Export Location Report (CSV)", data=res.to_csv(index=False).encode('utf-8'), file_name="location_report.csv", mime="text/csv")
-                else: st.warning("No locations found.")
             else:
                 res = df_r[df_r['quantity'] <= 5]
                 st.dataframe(res)
-                # BUTTON IS HERE
                 st.download_button(label="📥 Export Low Stock Report (CSV)", data=res.to_csv(index=False).encode('utf-8'), file_name="low_stock_report.csv", mime="text/csv")
-        else:
-            st.info("No assets in the system yet. Please add assets to view reports.")
-
 else:
     st.title("🔒 Restricted Access")
     st.info("Please enter your credentials in the sidebar.")
