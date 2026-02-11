@@ -136,27 +136,27 @@ elif choice == "Category Settings":
 # --- LOCATION SETTINGS ---
 elif choice == "Initial Location Settings":
     if user_role == "Admin":
-        st.subheader("📍 Manage Locations")
-        with st.expander("➕ Add New Location"):
-            new_l = st.text_input("New Location Name")
-            if st.button("Save New Location"):
+        st.subheader("📍 Manage Initial Locations")
+        with st.expander("➕ Add New Initial Location"):
+            new_l = st.text_input("New Initial Location Name")
+            if st.button("Save New Initial Location"):
                 if new_l: 
                     conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (new_l,))
                     conn.commit(); st.rerun()
-        with st.expander("📝 Edit Location Name"):
+        with st.expander("📝 Edit Initial Location Name"):
             loc_list = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
             if loc_list:
                 old_l = st.selectbox("Select Location to Rename", loc_list)
                 ren_l = st.text_input("New Name for selected location")
-                if st.button("Update Location Name"):
+                if st.button("Update Initial Location Name"):
                     if ren_l: 
                         conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l))
                         conn.commit(); st.rerun()
-        with st.expander("🗑️ Delete Location"):
+        with st.expander("🗑️ Delete Initial Location"):
             loc_list_del = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
             if loc_list_del:
                 l_to_del = st.selectbox("Select Location to Remove", loc_list_del)
-                if st.button("Permanently Delete Location"):
+                if st.button("Permanently Delete Initial Location"):
                     conn.execute('DELETE FROM locations WHERE name=?', (l_to_del,))
                     conn.commit(); st.rerun()
         st.divider(); st.write("Current List:"); st.table(pd.read_sql('SELECT * FROM locations', conn))
