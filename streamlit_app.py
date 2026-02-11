@@ -74,16 +74,38 @@ if st.session_state['logged_in']:
     choice = st.sidebar.selectbox("Navigation", menu)
     conn = get_connection()
 
-    # --- DASHBOARD ---
+    # --- DASHBOARD (SEARCH & FILTERING ADDED) ---
     if choice == "Dashboard":
         st.header("🔍 Inventory Overview")
         df = pd.read_sql('SELECT * FROM assets', conn)
         if not df.empty:
             df.loc[df['quantity'] == 0, 'status'] = 'Out of Stock'
             df.loc[df['quantity'] > 0, 'status'] = 'In Stock'
-            search = st.text_input("Search...")
+            
+            # --- SEARCH AND FILTERING UI ---
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                search = st.text_input("Search (Name/Serial/Category)")
+            with col_s2:
+                status_filter = st.multiselect("Filter by Status", ["In Stock", "Out of Stock"])
+            with col_s3:
+                loc_list_db = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
+                loc_filter = st.multiselect("Filter by Location", loc_list_db)
+
+            # Apply Search
             if search:
-                df = df[df['name'].str.contains(search, case=False) | df['serial'].str.contains(search, case=False) | df['category'].str.contains(search, case=False)]
+                df = df[df['name'].str.contains(search, case=False) | 
+                        df['serial'].str.contains(search, case=False) | 
+                        df['category'].str.contains(search, case=False)]
+            
+            # Apply Status Filter
+            if status_filter:
+                df = df[df['status'].isin(status_filter)]
+            
+            # Apply Location Filter
+            if loc_filter:
+                df = df[df['location'].isin(loc_filter)]
+                
             st.dataframe(df, use_container_width=True)
         else:
             st.info("Inventory is empty.")
@@ -162,7 +184,7 @@ if st.session_state['logged_in']:
                         if ren_c: 
                             conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c))
                             conn.commit()
-                            st.success(f"Category Renamed from '{old_c}' to '{ren_c}'!")
+                            st.success(f"Category Renamed!")
                             st.rerun()
             with st.expander("🗑️ Delete"):
                 d_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
@@ -173,9 +195,9 @@ if st.session_state['logged_in']:
                         if check == 0:
                             conn.execute('DELETE FROM categories WHERE name=?', (d_cat,))
                             conn.commit()
-                            st.success(f"Category '{d_cat}' Deleted Successfully!")
+                            st.success(f"Category Deleted!")
                             st.rerun()
-                        else: st.error(f"Cannot delete! '{d_cat}' is currently used.")
+                        else: st.error(f"Cannot delete! Category is in use.")
         else: st.error("Only Admin is authorized.")
 
     # --- LOCATION SETTINGS ---
@@ -189,18 +211,18 @@ if st.session_state['logged_in']:
                     if n_loc: 
                         conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,))
                         conn.commit()
-                        st.success(f"Location '{n_loc}' Added Successfully!")
+                        st.success(f"Location Added!")
                         st.rerun()
             with st.expander("📝 Edit"):
                 l_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
                 if l_list:
                     old_l = st.selectbox("Select Location", l_list, key="edit_loc_select")
-                    ren_l = st.text_input("New Location Name String")
+                    ren_l = st.text_input("New Location Name")
                     if st.button("Update Loc Name"):
                         if ren_l: 
                             conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l))
                             conn.commit()
-                            st.success(f"Location Renamed from '{old_l}' to '{ren_l}'!")
+                            st.success(f"Location Renamed!")
                             st.rerun()
             with st.expander("🗑️ Delete"):
                 dl_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
@@ -211,9 +233,9 @@ if st.session_state['logged_in']:
                         if check == 0:
                             conn.execute('DELETE FROM locations WHERE name=?', (d_loc,))
                             conn.commit()
-                            st.success(f"Location '{d_loc}' Deleted Successfully!")
+                            st.success(f"Location Deleted!")
                             st.rerun()
-                        else: st.error(f"Cannot delete! '{d_loc}' is currently used.")
+                        else: st.error(f"Cannot delete! Location is in use.")
         else: st.error("Only Admin is authorized.")
 
     # --- USER MANAGEMENT ---
@@ -251,4 +273,4 @@ if st.session_state['logged_in']:
                 st.download_button(label="📥 Export Low Stock Report (CSV)", data=res.to_csv(index=False).encode('utf-8'), file_name="low_stock_report.csv", mime="text/csv")
 else:
     st.title("🔒 Restricted Access")
-    st.info("Please enter your credentials in the sidebar.")
+    st.info("Please enter credentials in the sidebar.")
