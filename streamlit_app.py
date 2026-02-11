@@ -5,8 +5,8 @@ import hashlib
 
 # --- 1. DATABASE & SECURITY CONFIG ---
 def get_connection():
-    # v13: Final stable version with Delete Function Bug Fixes
-    return sqlite3.connect('inventory_final_v13.db', check_same_thread=False)
+    # v14: Includes export buttons and authorization warning labels
+    return sqlite3.connect('inventory_final_v14.db', check_same_thread=False)
 
 def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
@@ -93,6 +93,7 @@ if st.session_state['logged_in']:
     elif choice == "Manage Assets":
         if user_role == "Admin":
             st.subheader("➕ Add New Asset")
+            st.caption("⚠️ Only Admin is authorized to add new assets.")
             cat_list = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
             loc_list = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
             if not cat_list or not loc_list:
@@ -114,6 +115,7 @@ if st.session_state['logged_in']:
 
         if user_role in ["Admin", "Manager"]:
             st.divider(); st.subheader("🔄 Update Status/Location")
+            st.caption("⚠️ Only Admin and Manager are authorized to update assets.")
             asset_query = pd.read_sql('SELECT * FROM assets', conn)
             if not asset_query.empty:
                 target = st.selectbox("Select Asset to Update", asset_query['name'].tolist())
@@ -130,55 +132,69 @@ if st.session_state['logged_in']:
                     conn.execute('UPDATE assets SET quantity=?, location=?, status=? WHERE name=?', (new_qty, new_loc, new_status, target))
                     conn.commit(); st.success("Updated!"); st.rerun()
 
-    # --- CATEGORY SETTINGS (FIXED DELETE) ---
-    elif choice == "Category Settings" and user_role == "Admin":
-        st.subheader("📂 Manage Categories")
-        with st.expander("➕ Add"):
-            n_cat = st.text_input("New Name")
-            if st.button("Save Cat"): conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (n_cat,)); conn.commit(); st.rerun()
-        with st.expander("📝 Edit"):
-            c_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
-            if c_list:
-                old_c = st.selectbox("Select Category", c_list)
-                ren_c = st.text_input("New Name")
-                if st.button("Update Cat"): conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c)); conn.commit(); st.rerun()
-        with st.expander("🗑️ Delete"):
-            d_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
-            if d_list:
-                d_cat = st.selectbox("Remove Category", d_list)
-                if st.button("Delete Cat"):
-                    # Check if Category is used by assets
-                    check = conn.execute('SELECT count(*) FROM assets WHERE category=?', (d_cat,)).fetchone()[0]
-                    if check == 0:
-                        conn.execute('DELETE FROM categories WHERE name=?', (d_cat,)); conn.commit(); st.rerun()
-                    else: st.error(f"Cannot delete! '{d_cat}' is currently used by assets in your inventory.")
+        if user_role == "Admin":
+            st.divider(); st.subheader("🗑️ Delete Asset")
+            st.caption("⚠️ Only Admin is authorized to delete assets.")
+            assets = [r[0] for r in conn.execute('SELECT name FROM assets').fetchall()]
+            if assets:
+                t_del = st.selectbox("Delete Asset", assets)
+                if st.button("Confirm Delete Asset"):
+                    conn.execute('DELETE FROM assets WHERE name=?', (t_del,)); conn.commit(); st.rerun()
 
-    # --- LOCATION SETTINGS (FIXED DELETE) ---
-    elif choice == "Initial Location Settings" and user_role == "Admin":
-        st.subheader("📍 Manage Locations")
-        with st.expander("➕ Add"):
-            n_loc = st.text_input("New Location Name")
-            if st.button("Save Loc"): conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,)); conn.commit(); st.rerun()
-        with st.expander("📝 Edit"):
-            l_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
-            if l_list:
-                old_l = st.selectbox("Select Location", l_list)
-                ren_l = st.text_input("New Location Name")
-                if st.button("Update Loc"): conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
-        with st.expander("🗑️ Delete"):
-            dl_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
-            if dl_list:
-                d_loc = st.selectbox("Remove Location", dl_list)
-                if st.button("Delete Loc"):
-                    # Check if Location is used by assets
-                    check = conn.execute('SELECT count(*) FROM assets WHERE location=?', (d_loc,)).fetchone()[0]
-                    if check == 0:
-                        conn.execute('DELETE FROM locations WHERE name=?', (d_loc,)); conn.commit(); st.rerun()
-                    else: st.error(f"Cannot delete! '{d_loc}' is currently used by assets in your inventory.")
+    # --- CATEGORY SETTINGS ---
+    elif choice == "Category Settings":
+        if user_role == "Admin":
+            st.subheader("📂 Manage Categories")
+            st.caption("⚠️ Only Admin is authorized to manage categories.")
+            with st.expander("➕ Add"):
+                n_cat = st.text_input("New Name")
+                if st.button("Save Cat"): conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (n_cat,)); conn.commit(); st.rerun()
+            with st.expander("📝 Edit"):
+                c_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
+                if c_list:
+                    old_c = st.selectbox("Select Category", c_list)
+                    ren_c = st.text_input("New Name")
+                    if st.button("Update Cat"): conn.execute('UPDATE categories SET name=? WHERE name=?', (ren_c, old_c)); conn.commit(); st.rerun()
+            with st.expander("🗑️ Delete"):
+                d_list = [r[0] for r in conn.execute('SELECT name FROM categories').fetchall()]
+                if d_list:
+                    d_cat = st.selectbox("Remove Category", d_list)
+                    if st.button("Delete Cat"):
+                        check = conn.execute('SELECT count(*) FROM assets WHERE category=?', (d_cat,)).fetchone()[0]
+                        if check == 0:
+                            conn.execute('DELETE FROM categories WHERE name=?', (d_cat,)); conn.commit(); st.rerun()
+                        else: st.error(f"Cannot delete! '{d_cat}' is currently used.")
+        else: st.error("Only Admin is authorized.")
 
-    # --- USER MANAGEMENT & REPORTS ---
+    # --- LOCATION SETTINGS ---
+    elif choice == "Initial Location Settings":
+        if user_role == "Admin":
+            st.subheader("📍 Manage Locations")
+            st.caption("⚠️ Only Admin is authorized to manage locations.")
+            with st.expander("➕ Add"):
+                n_loc = st.text_input("New Location Name")
+                if st.button("Save Loc"): conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (n_loc,)); conn.commit(); st.rerun()
+            with st.expander("📝 Edit"):
+                l_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
+                if l_list:
+                    old_l = st.selectbox("Select Location", l_list)
+                    ren_l = st.text_input("New Location Name")
+                    if st.button("Update Loc"): conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
+            with st.expander("🗑️ Delete"):
+                dl_list = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
+                if dl_list:
+                    d_loc = st.selectbox("Remove Location", dl_list)
+                    if st.button("Delete Loc"):
+                        check = conn.execute('SELECT count(*) FROM assets WHERE location=?', (d_loc,)).fetchone()[0]
+                        if check == 0:
+                            conn.execute('DELETE FROM locations WHERE name=?', (d_loc,)); conn.commit(); st.rerun()
+                        else: st.error(f"Cannot delete! '{d_loc}' is currently used.")
+        else: st.error("Only Admin is authorized.")
+
+    # --- USER MANAGEMENT ---
     elif choice == "User Management" and user_role == "Admin":
         st.subheader("👥 User Administration")
+        st.caption("⚠️ Only Admin is authorized to manage users.")
         with st.form("user_form"):
             new_u, new_p = st.text_input("Username"), st.text_input("Password", type='password')
             new_r = st.selectbox("Role", ["Admin", "Manager", "Viewer"])
@@ -189,6 +205,7 @@ if st.session_state['logged_in']:
                 except: st.error("User already exists")
         st.table(pd.read_sql('SELECT username, role FROM users', conn))
 
+    # --- REPORTS ---
     elif choice == "Reports":
         st.header("📊 Reports")
         rep = st.radio("Type", ["Location Report", "Low Stock Alert (<= 5)"])
@@ -196,18 +213,21 @@ if st.session_state['logged_in']:
         if not df_r.empty:
             df_r.loc[df_r['quantity'] == 0, 'status'] = 'Out of Stock'
             df_r.loc[df_r['quantity'] > 0, 'status'] = 'In Stock'
+            
             if rep == "Location Report":
                 lo = [r[0] for r in conn.execute('SELECT name FROM locations').fetchall()]
                 if lo:
                     ls = st.selectbox("Select Location", lo)
                     res = df_r[df_r['location'] == ls]
                     st.dataframe(res)
-                    st.download_button("Download CSV", res.to_csv(index=False).encode('utf-8'), "report.csv")
+                    # EXPORT BUTTON ADDED HERE
+                    st.download_button("📥 Export Location Report (CSV)", res.to_csv(index=False).encode('utf-8'), "location_report.csv", "text/csv")
             else:
                 res = df_r[df_r['quantity'] <= 5]
                 st.dataframe(res)
-                st.download_button("Download CSV", res.to_csv(index=False).encode('utf-8'), "report.csv")
+                # EXPORT BUTTON ADDED HERE
+                st.download_button("📥 Export Low Stock Report (CSV)", res.to_csv(index=False).encode('utf-8'), "low_stock_report.csv", "text/csv")
 
 else:
     st.title("🔒 Restricted Access")
-    st.info("Please log in from the sidebar.")
+    st.info("Please enter your credentials in the sidebar.")
