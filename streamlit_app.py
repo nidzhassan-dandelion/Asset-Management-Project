@@ -4,23 +4,20 @@ import sqlite3
 
 # --- 1. DATABASE CONFIGURATION ---
 def get_connection():
-    # v9 ensures the final schema with all logic is active
-    return sqlite3.connect('inventory_final_v9.db', check_same_thread=False)
+    # v10 for a completely clean start without forced defaults
+    return sqlite3.connect('inventory_final_v10.db', check_same_thread=False)
 
 def init_db():
     conn = get_connection()
     c = conn.cursor()
+    # Create Assets Table
     c.execute('''CREATE TABLE IF NOT EXISTS assets 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, serial TEXT, 
                   category TEXT, purchase_date TEXT, location TEXT, status TEXT, quantity INTEGER)''')
+    # Create Categories Table (No defaults inserted)
     c.execute('CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)')
+    # Create Locations Table (No defaults inserted)
     c.execute('CREATE TABLE IF NOT EXISTS locations (name TEXT PRIMARY KEY)')
-    
-    # Defaults
-    default_cats = [("IT Equipment",), ("Office Furniture",), ("Tools",)]
-    c.executemany('INSERT OR IGNORE INTO categories VALUES (?)', default_cats)
-    default_locs = [("Office A",), ("Warehouse 1",), ("Remote Employee",)]
-    c.executemany('INSERT OR IGNORE INTO locations VALUES (?)', default_locs)
     conn.commit()
 
 init_db()
@@ -54,23 +51,27 @@ if choice == "Dashboard":
 elif choice == "Manage Assets":
     if user_role == "Admin":
         st.subheader("➕ Add New Asset")
-        with st.form("add_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                name = st.text_input("Asset Name")
-                serial = st.text_input("Serial Number")
-                cat_list = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
-                category = st.selectbox("Category", cat_list)
-            with col2:
-                qty = st.number_input("Quantity", min_value=0, step=1, value=1)
-                loc_list = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
-                loc = st.selectbox("Location", loc_list)
-                p_date = st.date_input("Purchase Date")
-            if st.form_submit_button("Save Asset"):
-                status = "In Stock" if qty > 0 else "Out of Stock"
-                conn.execute('INSERT INTO assets (name, serial, category, purchase_date, location, status, quantity) VALUES (?,?,?,?,?,?,?)', (name, serial, category, str(p_date), loc, status, qty))
-                conn.commit()
-                st.success(f"Added {name}")
+        cat_list = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
+        loc_list = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
+        
+        if not cat_list or not loc_list:
+            st.warning("Please add at least one Category and one Location in the settings tabs before adding assets.")
+        else:
+            with st.form("add_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    name = st.text_input("Asset Name")
+                    serial = st.text_input("Serial Number")
+                    category = st.selectbox("Category", cat_list)
+                with col2:
+                    qty = st.number_input("Quantity", min_value=0, step=1, value=1)
+                    loc = st.selectbox("Location", loc_list)
+                    p_date = st.date_input("Purchase Date")
+                if st.form_submit_button("Save Asset"):
+                    status = "In Stock" if qty > 0 else "Out of Stock"
+                    conn.execute('INSERT INTO assets (name, serial, category, purchase_date, location, status, quantity) VALUES (?,?,?,?,?,?,?)', (name, serial, category, str(p_date), loc, status, qty))
+                    conn.commit()
+                    st.success(f"Added {name}")
 
     if user_role in ["Admin", "Manager"]:
         st.divider()
@@ -107,23 +108,28 @@ elif choice == "Manage Assets":
 elif choice == "Category Settings":
     if user_role == "Admin":
         st.subheader("📂 Manage Categories")
-        # ADD
         with st.expander("➕ Add New Category"):
             new_cat = st.text_input("New Name")
             if st.button("Save New Category"):
-                if new_cat: conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (new_cat,)); conn.commit(); st.rerun()
-        # EDIT
+                if new_cat: 
+                    conn.execute('INSERT OR IGNORE INTO categories VALUES (?)', (new_cat,))
+                    conn.commit(); st.rerun()
         with st.expander("📝 Edit Category Name"):
             cat_list = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
-            old_name = st.selectbox("Select Category to Rename", cat_list)
-            renamed = st.text_input("New Name for selected category")
-            if st.button("Update Category Name"):
-                if renamed: conn.execute('UPDATE categories SET name=? WHERE name=?', (renamed, old_name)); conn.commit(); st.rerun()
-        # DELETE
+            if cat_list:
+                old_name = st.selectbox("Select Category to Rename", cat_list)
+                renamed = st.text_input("New Name for selected category")
+                if st.button("Update Category Name"):
+                    if renamed: 
+                        conn.execute('UPDATE categories SET name=? WHERE name=?', (renamed, old_name))
+                        conn.commit(); st.rerun()
         with st.expander("🗑️ Delete Category"):
-            cat_to_del = st.selectbox("Select Category to Remove", [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()])
-            if st.button("Permanently Delete Category"):
-                conn.execute('DELETE FROM categories WHERE name=?', (cat_to_del,)); conn.commit(); st.rerun()
+            cat_list_del = [row[0] for row in conn.execute('SELECT name FROM categories').fetchall()]
+            if cat_list_del:
+                cat_to_del = st.selectbox("Select Category to Remove", cat_list_del)
+                if st.button("Permanently Delete Category"):
+                    conn.execute('DELETE FROM categories WHERE name=?', (cat_to_del,))
+                    conn.commit(); st.rerun()
         st.divider(); st.write("Current List:"); st.table(pd.read_sql('SELECT * FROM categories', conn))
     else: st.error("Admin Only")
 
@@ -131,23 +137,28 @@ elif choice == "Category Settings":
 elif choice == "Initial Location Settings":
     if user_role == "Admin":
         st.subheader("📍 Manage Locations")
-        # ADD
         with st.expander("➕ Add New Location"):
             new_l = st.text_input("New Location Name")
             if st.button("Save New Location"):
-                if new_l: conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (new_l,)); conn.commit(); st.rerun()
-        # EDIT
+                if new_l: 
+                    conn.execute('INSERT OR IGNORE INTO locations VALUES (?)', (new_l,))
+                    conn.commit(); st.rerun()
         with st.expander("📝 Edit Location Name"):
             loc_list = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
-            old_l = st.selectbox("Select Location to Rename", loc_list)
-            ren_l = st.text_input("New Name for selected location")
-            if st.button("Update Location Name"):
-                if ren_l: conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l)); conn.commit(); st.rerun()
-        # DELETE
+            if loc_list:
+                old_l = st.selectbox("Select Location to Rename", loc_list)
+                ren_l = st.text_input("New Name for selected location")
+                if st.button("Update Location Name"):
+                    if ren_l: 
+                        conn.execute('UPDATE locations SET name=? WHERE name=?', (ren_l, old_l))
+                        conn.commit(); st.rerun()
         with st.expander("🗑️ Delete Location"):
-            l_to_del = st.selectbox("Select Location to Remove", [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()])
-            if st.button("Permanently Delete Location"):
-                conn.execute('DELETE FROM locations WHERE name=?', (l_to_del,)); conn.commit(); st.rerun()
+            loc_list_del = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
+            if loc_list_del:
+                l_to_del = st.selectbox("Select Location to Remove", loc_list_del)
+                if st.button("Permanently Delete Location"):
+                    conn.execute('DELETE FROM locations WHERE name=?', (l_to_del,))
+                    conn.commit(); st.rerun()
         st.divider(); st.write("Current List:"); st.table(pd.read_sql('SELECT * FROM locations', conn))
     else: st.error("Admin Only")
 
@@ -161,10 +172,16 @@ elif choice == "Reports":
         df_rep.loc[df_rep['quantity'] > 0, 'status'] = 'In Stock'
         if rep_type == "Assets by Location":
             l_opts = [row[0] for row in conn.execute('SELECT name FROM locations').fetchall()]
-            l_choice = st.selectbox("Select Location", l_opts)
-            final_df = df_rep[df_rep['location'] == l_choice]
-        else: final_df = df_rep[df_rep['quantity'] <= 5]
-        st.dataframe(final_df, use_container_width=True)
-        csv_data = final_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download CSV", csv_data, "report.csv", "text/csv")
+            if l_opts:
+                l_choice = st.selectbox("Select Location", l_opts)
+                final_df = df_rep[df_rep['location'] == l_choice]
+                st.dataframe(final_df, use_container_width=True)
+                csv_data = final_df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download CSV", csv_data, "report.csv", "text/csv")
+            else: st.warning("No locations defined.")
+        else: 
+            final_df = df_rep[df_rep['quantity'] <= 5]
+            st.dataframe(final_df, use_container_width=True)
+            csv_data = final_df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download CSV", csv_data, "report.csv", "text/csv")
     else: st.info("No data available.")
